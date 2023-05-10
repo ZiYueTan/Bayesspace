@@ -1,0 +1,175 @@
+---
+title: "Simulation-spots"
+author: "Ziyue Tan"
+date: "2023-05-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+for (i in list.files(pattern = ".R$")) 
+  source(i)     
+library(mvtnorm)
+```
+
+## melanoma spots simulation
+```{r melanoma}
+melanoma <- getRDS(dataset="2018_thrane_melanoma", sample="ST_mel1_rep2")
+melanoma <- preprocess(melanoma, platform = "ST", n.PCs = 7, n.HVGs = 2000, log.normalize = FALSE)
+set.seed(1)
+melanoma <- SpatialCluster(melanoma, q = 4, d = 7, platform = "ST", gamma = 2, n.rep = 100, ncores = 1,save_para = TRUE)
+```
+
+```{r melanoma parameters}
+mu <- metadata(melanoma)$para$mu
+w <- metadata(melanoma)$para$w
+Lambda <- metadata(melanoma)$para$Lambda
+z <- melanoma$spatial.cluster
+
+Sigma <- solve(Lambda)
+v <- 4
+n <- length(z)
+
+
+
+simu.spots  <- function(i, Sigma, v, mu, w, z){
+  rmvt(1, sigma = 1 / w[i] * Sigma, df = v, delta = mu[z[i], ])
+}
+```
+
+```{r melanoma simulation}
+
+for(i in  1 :8){
+  
+  Y.simu <- t(sapply(1 : n, function(x) as.vector(simu.spots(j = x, Sigma =  Sigma, v = v, mu = mu, w = w, z = z)))))
+  
+  gene <- rowData(melanoma)
+  loc <- colData(melanoma)[c("row", "col")]
+  
+  melanoma.simu <- SingleCellExperiment(rowData = gene, colData = loc, reducedDims = list("PCA" = Y.simu))
+  melanoma.simu  <- preprocess(melanoma.simu, platform = "ST", n.PCs = 7, n.HVGs = 2000, log.normalize = FALSE, skip.PCA = TRUE)
+  
+  #BayesSpace
+  set.seed(1)
+  melanoma.simu <- SpatialCluster(melanoma.simu, q = 4, d = 7, platform ="ST", n.rep = 100, gamma = 2, ncores = 1)
+
+  clusters <- list()
+  clusters[["BayesSpace"]] <- melanoma.simu$spatial.cluster
+  
+  # K-means
+  set.seed(103)
+  clusters[["k-means"]] <- kmeans(Y.simu, centers = 4)$cluster
+  
+  # Louvain
+  set.seed(100)
+  g.jaccard = scran::buildSNNGraph(melanoma.simu, use.dimred="PCA", type="jaccard")
+  clusters[["Louvain"]] <- igraph::cluster_louvain(g.jaccard)$membership
+  
+  # mclust (BayesSpace initialization)
+  set.seed(104)
+  library(mclust)
+  clusters[["mclust"]] <- Mclust(Y.simu, G = 4, modelNames = "EEE", verbose = FALSE)$classification
+
+  
+  # ground truth 
+  clusters[["ground truth"]] <- melanoma$spatial.cluster
+  ARI <- purrr::map(clusters, function(x) mclust::adjustedRandIndex(x, clusters[["ground truth"]]))   
+  
+   if(i == 1){
+    ARI.frame <- data.frame("ARI" = unlist(ARI), "algorithm" = names(ARI))
+  }else{
+    ARI.frame <- rbind(ARI.frame , data.frame("ARI" = unlist(ARI), "algorithm" = names(ARI)))
+  }
+  
+}
+
+```
+
+```{r melanoma ARI}
+ARI.frame$algorithm <- factor(ARI.frame$algorithm,levels = c("k-means", "mclust", "Louvain", "BayesSpace", "ground truth"))
+
+ggplot(ARI.frame, aes(x = algorithm, y = ARI)) + geom_boxplot()  +
+  geom_jitter(shape = 16, position = position_jitter(0.2)) +
+  theme_bw() + labs(title = "melanoma")
+```
+
+
+## OC simulation
+```{r OC}
+OC <- getRDS("2020_10X-demo_ovarian-cancer", "whole_transcriptome")
+OC <- preprocess(OC, platform = "Visium", n.PCs = 15, n.HVGs = 2000, log.normalize = FALSE)
+set.seed(1)
+OC <- SpatialCluster(OC, q = 6, d = 15, platform = "Visium", gamma = 3, n.rep = 10, ncores = 2, save_para = TRUE)
+```
+
+```{r OC parameters}
+mu <- metadata(OC)$para$mu
+w <- metadata(OC)$para$w
+Lambda <- metadata(OC)$para$Lambda
+z <- OC$spatial.cluster
+
+Sigma <- solve(Lambda)
+v <- 4
+n <- length(z)
+
+```
+
+```{r OC simulation}
+for(i in  1 :8){
+
+  
+  Y.simu <- t(sapply(1 : n, function(x) as.vector(simu.spots(j = x, Sigma =  Sigma, v = v, mu = mu, w = w, z = z))))
+  
+  gene <- rowData(OC)
+  loc <- colData(OC)[c("row", "col")]
+  
+  OC.simu <- SingleCellExperiment(rowData = gene, colData = loc, reducedDims = list("PCA" = Y.simu))
+  OC.simu  <- preprocess(OC.simu, platform = "Visium", n.PCs = 15, n.HVGs = 2000, log.normalize = FALSE, skip.PCA = TRUE)
+  
+  #BayesSpace
+  set.seed(1)
+  OC.simu <- SpatialCluster(OC.simu, q = 6, d = 15, platform ="Visium", n.rep = 100, gamma = 3, ncores = 2)
+
+  clusters <- list()
+  clusters[["BayesSpace"]] <- OC.simu$spatial.cluster
+  
+  # K-means
+  set.seed(103)
+  clusters[["k-means"]] <- kmeans(Y.simu, centers = 6)$cluster
+  
+  # Louvain
+  set.seed(100)
+  g.jaccard = scran::buildSNNGraph(OC.simu, use.dimred="PCA", type="jaccard")
+  clusters[["Louvain"]] <- igraph::cluster_louvain(g.jaccard)$membership
+  
+  # mclust (BayesSpace initialization)
+  set.seed(104)
+  library(mclust)
+  clusters[["mclust"]] <- Mclust(Y.simu, G = 6, modelNames = "EEE", verbose = FALSE)$classification
+
+  
+  # ground truth 
+  clusters[["ground truth"]] <- OC$spatial.cluster
+  ARI <- purrr::map(clusters, function(x) mclust::adjustedRandIndex(x, clusters[["ground truth"]]))   
+  
+  if(i == 1){
+    ARI.frame <- data.frame("ARI" = unlist(ARI), "algorithm" = names(ARI))
+  }else{
+    ARI.frame <- rbind(ARI.frame , data.frame("ARI" = unlist(ARI), "algorithm" = names(ARI)))
+  }
+  
+}
+```
+
+```{r OC ARI}
+ARI.frame$algorithm <- factor(ARI.frame$algorithm,levels =
+                                c("k-means", "mclust", "Louvain", "BayesSpace", "ground truth"))
+
+ggplot(ARI.frame, aes(x = algorithm, y = ARI)) + geom_boxplot() +
+  geom_jitter(shape = 16, position = position_jitter(0.2)) +
+  theme_bw() + labs(title = "OC") 
+```
+

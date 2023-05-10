@@ -1,0 +1,129 @@
+---
+title: "melanoma"
+author: "Ziyue Tan"
+date: "2023-05-07"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+# load funtions
+
+for (i in list.files(pattern = ".R$")) {
+  source(i)                      
+}
+
+```
+
+# BayesSpace analysis of melanoma dataset (Thrane et al., 2018)
+## Processing the data
+```{r melanoma preprocess}
+melanoma <- getRDS(dataset="2018_thrane_melanoma", sample="ST_mel1_rep2")
+melanoma <- preprocess(melanoma, platform = "ST", n.PCs = 7, n.HVGs = 2000, log.normalize = FALSE)
+```
+
+## Clustering with BayesSpace
+```{r melanoma cluster}
+melanoma <- SpatialCluster(melanoma, q = 4, d = 7, platform = "ST", gamma = 2, n.rep = 1000, ncores = 1)
+```
+
+## Enhancing resolution with BayesSpace
+```{r melanoma cluster plot}
+#View results
+palette <- c("purple", "red", "blue", "yellow", "darkblue")
+ClusterPlot(melanoma, palette = palette)  + labs(title = "BayesSpace") + geom_polygon(color = "black") 
+```
+`
+
+```{r melanoma enhanced cluster}
+enhanced.melanoma <- EnhancedCluster(melanoma, q = 4,  d = 7, platform ="ST", mu0 = NULL, Lambda0 = NULL, gamma = 2, alpha = 1, beta = 0.01, n.rep = 500, jitter_scale = 20, jitter_prior = 10, ncores = 1)
+```
+
+```{r melanoma enhanced cluster plot}
+ClusterPlot(enhanced.melanoma, is.enhanced = TRUE, palette = palette) + labs(title = "Enhanced clustering") + geom_polygon(color = "black") 
+```
+
+## Enhancement of marker gene expression
+```{r melanoma feature}
+library(purrr)
+
+markers <- list()
+markers[["Tumor"]] <- c("PMEL")
+markers[["Fibroblast"]] <- c("COL1A1")
+markers[["Macrophage"]] <- c("CD14", "FCGR1A", "FCGR1B")
+markers[["B-cell"]] <- c("CD19", "MS4A1")
+markers[["T-cell"]] <- c("CD2", "CD3D", "CD3E", "CD3G", "CD7")
+
+enhanced.melanoma <- EnhanceFeatures(enhanced.melanoma, melanoma, model = "xgboost", feature_names=purrr::reduce(markers, c), nrounds=0)
+
+```
+
+```{r sum expression}
+sum_counts <- function(sce, features) {
+  if (length(features) > 1) {
+    colSums(logcounts(sce)[features, ])
+  } else {
+    logcounts(sce)[features, ]
+  }
+}
+
+spot_expr <- purrr::map(markers, function(xs) sum_counts(melanoma, xs))
+enhanced_expr <- purrr::map(markers, function(xs) sum_counts(enhanced.melanoma, xs))
+```
+
+```{r melanoma feature plot}
+library(viridis)
+plot_expression <- function(sce, expr, title) {
+  FeaturePlot(sce, expr) +
+    viridis::scale_fill_viridis(option="A") +
+    labs(title=title, fill="Log-normalized\nexpression")
+}
+
+plot_expression_comparison <- function(cell_type) {
+  spot.plot <- plot_expression(melanoma,  spot_expr[[cell_type]],  "Spot")
+  enhanced.plot <- plot_expression(enhanced.melanoma, enhanced_expr[[cell_type]],  "Enhanced")
+  
+  (spot.plot + enhanced.plot) +  plot_annotation(title=cell_type)
+}
+```
+
+```{r plot expression}
+plot_expression_comparison("Tumor")
+plot_expression_comparison("Fibroblast") 
+plot_expression_comparison("Macrophage") 
+plot_expression_comparison("B-cell") 
+plot_expression_comparison("T-cell")
+
+```
+
+## Differential expression analysis of spatial clusters
+```{r differential expression analysis}
+library(scran)
+library(Seurat)
+## Using the same 2,000 HVGs previously computed for PCA, excluding ribosomal
+stats <- scran::modelGeneVar(melanoma)
+top <- scran::getTopHVGs(stats, n = 2000)
+hvgs <- top[grep("^RP[LS]", top, invert=TRUE)]
+
+enhanced.melanoma <- EnhanceFeatures(enhanced.melanoma, melanoma, model="xgboost", feature_names=hvgs, nrounds=0)
+
+library(dplyr)
+
+## Convert SCE to Seurat object and use BayesSpace cluster as identifier
+sobj <- Seurat::CreateSeuratObject(counts=logcounts(enhanced.melanoma), assay='Spatial', meta.data=as.data.frame(colData(enhanced.melanoma)))
+sobj <- Seurat::SetIdent(sobj, value = "spatial.cluster")
+
+## Scale data
+sobj@assays$Spatial@scale.data <- sobj@assays$Spatial@data %>% as.matrix %>% t %>% scale %>% t
+
+## Select top n markers from each cluster (by log fold change)
+top_markers <- Seurat::FindAllMarkers(sobj, assay='Spatial', slot='data', group.by='spatial.cluster', only.pos=TRUE) %>%  group_by(cluster) %>% top_n(5, avg_log2FC)
+
+## Plot expression of markers
+Seurat::DoHeatmap(sobj, features = top_markers$gene, slot='scale.data',  group.by = "spatial.cluster", group.colors=palette, angle=0, size=4, label = FALSE, raster=FALSE) +  guides(col = FALSE)
+```

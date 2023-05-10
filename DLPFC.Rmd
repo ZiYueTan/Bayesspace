@@ -1,0 +1,141 @@
+---
+title: "DLPFC"
+author: "Ziyue Tan"
+date: "2023-05-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load functions, include=FALSE}
+for (i in list.files(pattern = ".R$")) {
+  source(i)                      
+}
+```
+
+# BayesSpace analysis of DLPFC dataset (Maynard et al., 2020)
+## Processing the data
+```{r DLFPC preprocess}
+dlpfc <- getRDS("2020_maynard_prefrontal-cortex", "151673")
+dlpfc <- preprocess(dlpfc, platform = "Visium", n.PCs = 15, n.HVGs = 2000, log.normalize = FALSE)
+```
+
+
+## Clustering with BayesSpace
+```{r DLPFC cluster}
+# Run BayesSpace clustering
+set.seed(1)
+dlpfc <- SpatialCluster(dlpfc, q = 7, d = 15, platform='Visium', n.rep = 100, gamma=3, ncores = 2)
+```
+
+```{r DLPFC cluster plot}
+#View results
+labels <- dplyr::recode(dlpfc$spatial.cluster, 4, 6, 3, 5, 2, 1, 7)
+ClusterPlot(dlpfc, label = labels) + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="BayesSpace") 
+```
+
+
+## Compare with other clustering algorithms
+### view results of sample 151673
+```{r cluster}
+clusters <- list()
+clusters[["BayesSpace"]] <- dlpfc$spatial.cluster
+```
+
+
+#### Non-spatial clustering algorithms
+```{r Non-spatial clustering algorithms}
+Y <- reducedDim(dlpfc, "PCA")[, seq_len(15)]
+
+# K-means
+set.seed(103)
+clusters[["k-means"]] <- kmeans(Y, centers = 7)$cluster
+
+# Louvain
+set.seed(100)
+g.jaccard = scran::buildSNNGraph(dlpfc, use.dimred="PCA", type="jaccard")
+clusters[["Louvain"]] <- igraph::cluster_louvain(g.jaccard)$membership
+
+# mclust (BayesSpace initialization)
+set.seed(104)
+library(mclust)
+clusters[["mclust"]] <- Mclust(Y, G = 7, modelNames = "EEE", verbose = FALSE)$classification
+```
+
+#### Spatial clustering algorithms
+```{r Spatial clustering algorithms}
+clusters[["stLearn_HVGs"]] <- read.csv(system.file("extdata", "2020_maynard_prefrontal-cortex", "151673.stLearn_HVGs.csv", package = "BayesSpace"))$pca_kmeans + 1
+clusters[["stLearn_markers"]] <- read.csv(system.file("extdata", "2020_maynard_prefrontal-cortex", "151673.stLearn_markers.csv", package = "BayesSpace"))$pca_kmeans + 1
+clusters[["Giotto"]] <- read.csv(system.file("extdata", "2020_maynard_prefrontal-cortex", "151673.Giotto_HMRF.csv", package = "BayesSpace"))$HMRF_km_Delaunay_k7_b.9
+```
+
+
+#### spatialLIBD cluster assignments
+```{r spatialLIBD cluster assignments}
+#Loading objects sce
+sce <- miceadds::load.Rdata2(filename="Human_DLPFC_Visium_processedData_sce_scran_spatialLIBD.rdata")
+
+sce<- sce[, sce$sample_name == "151673"]
+
+## Walktrap and ground truth (manual annotations)
+clusters[["Walktrap_HVGs"]] <- sce$HVG_PCA_spatial
+clusters[["Walktrap_markers"]] <- sce$markers_PCA_spatial
+clusters[["Manual annotation"]] <- sce$layer_guess_reordered
+```
+
+```{r cluster plots}
+
+clusters <- data.frame(clusters)
+rownames(clusters) <- colnames(dlpfc)
+colData(dlpfc) <- cbind(colData(dlpfc), DataFrame(clusters))
+
+# Manual annotation results view
+ClusterPlot(dlpfc, label = "Manual.annotation") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="Manual annotation")
+
+# Walktrap(HVGs) result view 
+dlpfc$Walktrap_HVGs <- dplyr::recode(dlpfc$Walktrap_HVGs, 2, 4, 3, 8, 1, 7, 5, 6)
+ClusterPlot(dlpfc, label = "Walktrap_HVGs") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="Walktrap(HVGs)")
+
+# Walktrap (markers) result view 
+dlpfc$Walktrap_markers <- dplyr::recode(dlpfc$Walktrap_markers, 2, 4, 3, 8, 1, 7, 5, 6)
+ClusterPlot(dlpfc, label = "Walktrap_markers") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="Walktrap (markers)")
+
+# k-means result view
+dlpfc$k.means <- dplyr::recode(dlpfc$k.means, 3, 4, 1, 6, 5, 7, 2)
+ClusterPlot(dlpfc, label = "k.means") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="k-means") 
+
+# Louvain result view 
+dlpfc$Louvain <- dplyr::recode(dlpfc$Louvain, 2, 1, 10, 7, 8, 4, 5, 6, 3, 9)
+ClusterPlot(dlpfc, label = "Louvain") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="Louvain")
+
+# mclust result view 
+dlpfc$mclust <- dplyr::recode(dlpfc$mclust, 3, 4, 6, 2, 1, 5, 7)
+ClusterPlot(dlpfc, label = "mclust") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="mclust")
+
+# Giotto result view 
+dlpfc$Giotto <- dplyr::recode(dlpfc$Giotto, 1, 5, 6, 4, 2, 3, 7)
+ClusterPlot(dlpfc, label = "Giotto") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="Giotto")
+
+
+# stLearn (HVGs) result view 
+dlpfc$stLearn_HVGs <- dplyr::recode(dlpfc$stLearn_HVGs, 2, 7, 3, 5, 1, 4, 6)
+ClusterPlot(dlpfc, label = "stLearn_HVGs") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="stLearn (HVGs)")
+
+# stLearn (markers) result view 
+dlpfc$stLearn_markers <- dplyr::recode(dlpfc$stLearn_markers, 6, 7, 5, 4, 2, 1, 8, 3)
+ClusterPlot(dlpfc, label = "stLearn_markers") + scale_y_reverse() + scale_fill_viridis_d(option = "A") + labs(title="stLearn (markers)")
+```
+
+```{r ARI}
+ARI <- purrr::map(clusters, function(x) mclust::adjustedRandIndex(x, clusters[["Manual.annotation"]]))
+ARI <-  data.frame(t(data.frame(ARI)))
+
+ARI$algorithm <- c(rownames(ARI))
+
+colnames(ARI)[1] <- c("ARI")
+
+ggplot(ARI, aes(x = reorder(algorithm, ARI), y = ARI)) + geom_bar(stat = "identity", position = "dodge") + scale_x_discrete(guide = guide_axis(n.dodge = 2)) + labs(x = "algorithm") +  geom_text(aes(label = round(ARI, 2), vjust=-0.5))
+```
+
