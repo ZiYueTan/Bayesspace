@@ -1,0 +1,40 @@
+---
+title: "Giotto-DLPFC"
+author: "Ziyue Tan"
+date: "2023-05-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include=FALSE}
+list.files(pattern = ".R$")
+for (i in list.files(pattern = ".R$")) 
+  source(i)                      
+```
+
+
+```{r}
+sample_list <- c(c(151507:151510), c(151669:151676))
+cluster_numbers <- c(rep(7,4), rep(5, 4), rep(7, 4))
+
+
+for(i in 1 : 12){
+   sample <- sample_list[i]
+  cluster <- cluster_numbers[i]
+
+  dlpfc <- getRDS("2020_maynard_prefrontal-cortex", sample)
+  results_folder <- paste0( "/Users/tanziyue/Desktop/BayesSpace/DLPFC-Giotto/", sample)
+
+  save_name <- paste0(sample, ".Giotto_HMRF.csv")
+
+  GiottoVisium(dlpfc, "Visium", q = cluster, d = 15, betas = c(18, 0, 1), betas_to_add  = 18,  result_path = results_folder, add_file = TRUE, save_name = save_name)
+}
+ 
+
+```
+`
+

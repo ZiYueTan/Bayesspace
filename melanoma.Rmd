@@ -29,19 +29,24 @@ melanoma <- preprocess(melanoma, platform = "ST", n.PCs = 7, n.HVGs = 2000, log.
 
 ## Clustering with BayesSpace
 ```{r melanoma cluster}
-melanoma <- SpatialCluster(melanoma, q = 4, d = 7, platform = "ST", gamma = 2, n.rep = 1000, ncores = 1)
+
+melanoma <- SpatialCluster(melanoma, q = 4, d = 7, platform = "ST", gamma = 2, n.rep = 10000, ncores = 1)
 ```
 
 ## Enhancing resolution with BayesSpace
 ```{r melanoma cluster plot}
 #View results
-palette <- c("purple", "red", "blue", "yellow", "darkblue")
+palette <- c("purple", "red", "blue", "yellow", "darkblue", "green")
 ClusterPlot(melanoma, palette = palette)  + labs(title = "BayesSpace") + geom_polygon(color = "black") 
 ```
 `
 
 ```{r melanoma enhanced cluster}
-enhanced.melanoma <- EnhancedCluster(melanoma, q = 4,  d = 7, platform ="ST", mu0 = NULL, Lambda0 = NULL, gamma = 2, alpha = 1, beta = 0.01, n.rep = 500, jitter_scale = 20, jitter_prior = 10, ncores = 1)
+
+
+enhanced.melanoma <- EnhancedCluster(melanoma, q = 4,  d = 7, platform ="ST", mu0 = NULL, Lambda0 = NULL, gamma = 2, alpha = 1, beta = 0.01, n.rep = 1000, jitter_scale = 20, jitter_prior = 10, ncores = 1)
+
+
 ```
 
 ```{r melanoma enhanced cluster plot}
@@ -127,3 +132,139 @@ top_markers <- Seurat::FindAllMarkers(sobj, assay='Spatial', slot='data', group.
 ## Plot expression of markers
 Seurat::DoHeatmap(sobj, features = top_markers$gene, slot='scale.data',  group.by = "spatial.cluster", group.colors=palette, angle=0, size=4, label = FALSE, raster=FALSE) +  guides(col = FALSE)
 ```
+```{r algorithm compare}
+clusters <- list()
+Y <- reducedDim(melanoma, "PCA")[, seq_len(7)]
+
+# K-means
+set.seed(103)
+clusters[["k-means"]] <- kmeans(Y, centers = 4)$cluster
+
+# Louvain
+set.seed(100)
+g.jaccard = scran::buildSNNGraph(melanoma, use.dimred="PCA", type="jaccard")
+clusters[["Louvain"]] <- igraph::cluster_louvain(g.jaccard)$membership
+
+# mclust (BayesSpace initialization)
+set.seed(104)
+library(mclust)
+clusters[["mclust"]] <- Mclust(Y, G = 4, modelNames = "EEE", verbose = FALSE)$classification
+```
+
+```{r}
+
+## Giotto (pre-computed)
+giotto.fname <- system.file("extdata", "2018_thrane_melanoma", "ST_mel1_rep2.Giotto_HMRF.csv", package = "BayesSpace")
+giotto.labels <- read.csv(giotto.fname)$HMRF_PCA_k4_b.2
+length(giotto.labels)
+clusters[["giotto"]] <- giotto.labels
+```
+
+
+```{r}
+clusters <- data.frame(clusters)
+rownames(clusters) <- colnames(melanoma)
+colData(melanoma) <- cbind(colData(melanoma), DataFrame(clusters))
+colData(melanoma)
+```
+
+
+```{r}
+melanoma$k.means <- dplyr::recode(melanoma$k.means, 3, 1, 4, 2)
+ClusterPlot(melanoma, label = "k.means",  palette = palette) +
+  labs(title = "k.means") +
+  geom_polygon(color = "black") 
+
+melanoma$Louvain <- dplyr::recode(melanoma$Louvain, 1, 2, 4, 5, 6, 3)
+ClusterPlot(melanoma, label = "Louvain", palette = palette)  +
+  labs(title = "Louvain")  +
+  geom_polygon(color = "black") 
+
+ClusterPlot(melanoma, label = "mclust",  palette = palette) + 
+ labs(title = "mclust")+
+  geom_polygon(color = "black") 
+
+melanoma$giotto <- dplyr::recode(melanoma$giotto, 4, 2, 1, 3)
+ClusterPlot(melanoma, label = "giotto",  palette = palette) + 
+ labs(title = "giotto")+
+  geom_polygon(color = "black") 
+```
+
+```{r}
+label_spot <- Vectorize(function(cluster, col) {
+  if (cluster == 1 && col < 19) {
+    "Tumor border"
+  } else if (cluster == 4 && col < 19) {
+    "Lymphoid"
+  } else {
+    "Other"
+  }
+})
+
+
+DE.labels <- label_spot(enhanced.melanoma$spatial.cluster, enhanced.melanoma$sub.col)
+
+DE.labels <- factor(DE.labels, levels = c("Lymphoid", "Tumor border", "Other"))
+
+ClusterPlot(enhanced.melanoma,  label = "DE.labels",  is.enhanced = TRUE) +
+  scale_fill_manual(values=c('#0173b2',  '#949494', '#de8f05')) +
+  labs(fill="Region")+
+  geom_polygon(color = "black")
+```
+
+
+```{r}
+library(dplyr)
+sobj <- Seurat::AddMetaData(sobj, DE.labels, col.name="DE.label")
+sobj <- Seurat::SetIdent(sobj, value = "DE.label")
+
+## Subset to the two clusters of interest and re-scale
+sobj <- subset(sobj, DE.label %in% c("Lymphoid", "Tumor border"))
+sobj@assays$Spatial@scale.data <-
+  sobj@assays$Spatial@data %>% as.matrix %>% t %>% scale %>% t
+
+## Select top n markers from each cluster (by log fold change)
+top_markers <- Seurat::FindAllMarkers(sobj, assay='Spatial', slot='data',
+                                      group.by='DE.label',
+                                      only.pos=TRUE) %>% 
+  group_by(cluster) %>% 
+  top_n(5, avg_log2FC)
+
+## Plot expression of markers
+Seurat::DoHeatmap(sobj, features = top_markers$gene, slot='scale.data',
+                  group.by = "DE.label", group.colors=c('#0173b2', '#de8f05'), 
+                  angle=0, size=4, label = FALSE, raster=FALSE) + 
+  guides(col = FALSE)
+```
+
+CCL21，又称 exodus-2、次级淋巴组织趋化因子,主要由淋巴内皮细胞产生
+CD37 (CD37 Molecule)是一种蛋白质编码基因。
+淋巴毒素β（LTB）基因 
+MCAM(黑色素瘤细胞粘附分子)是一种蛋白质编码基
+ MLANA (Melan-A) is a Protein Coding gene. Diseases associated with MLANA include Melanoma In Congenital
+```{r}
+melanoma_k5 <- SpatialCluster(melanoma, q = 5, d = 7, platform = "ST", gamma = 2, n.rep = 10000, ncores = 1)
+```
+
+
+```{r}
+
+melanoma_k5$spatial.cluster <- dplyr::recode(melanoma_k5$spatial.cluster, 1, 2, 5, 4, 3)
+
+ClusterPlot(melanoma_k5, palette = palette) +  geom_polygon(color = "black") +  labs(title = "k = 5")
+```
+
+```{r}
+melanoma_k6 <- SpatialCluster(melanoma, q = 6, d = 7, platform = "ST", gamma = 2, n.rep = 10000, ncores = 1)
+```
+
+
+```{r}
+melanoma_k6$spatial.cluster <- dplyr::recode(melanoma_k6$spatial.cluster, 5, 2, 6, 3, 1, 4)
+ClusterPlot(melanoma_k6, palette = palette) + geom_polygon(color = "black") +  labs(title = "k = 6")
+```
+
+```{r}
+
+```
+
