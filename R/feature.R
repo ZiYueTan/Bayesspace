@@ -112,7 +112,7 @@ xgboost.feature <- function(X, X.enhanced, Y, feature_names, nrounds, train.n){
 #'   nrounds. By default, 2/3 the total number of spots are used.
 #'
 #' @return Vector of enhanced features.
-#' @export
+#' 
 #
 features <- function(X.enhanced, X, Y, feature_names = rownames(Y), model = c("xgboost", "lm"), nrounds, train.n){
 

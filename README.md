@@ -3,7 +3,7 @@ Reproduce Bayespace algorithm
 
 # Installation
 ```{r}
-#install.packages("devtools")
+install.packages("devtools")
 devtools::install_github("ZiYueTan/Bayesspace")
 ```
 
