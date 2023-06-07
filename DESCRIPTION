@@ -1,0 +1,29 @@
+Package: bayesspace
+Type: Package
+Title: Reproduce Bayespace algorithm
+Version: 0.0.1
+Author: Ziyue Tan
+Maintainer: The package maintainer <yourself@somewhere.net>
+Description: Reproduce Bayespace algorithm. 
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    scater,
+    scran,
+    RCurl,
+    BiocFileCache,
+    assertthat,
+    utils,
+    stats,
+    mclust,
+    mvtnorm,
+    MASS,
+    parallel,
+    scales,
+    xgboost,
+    ggplot2,
+    S4Vectors,
+    SingleCellExperiment,
+    SummarizedExperiment
+RoxygenNote: 7.2.3
