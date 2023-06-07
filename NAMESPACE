@@ -3,7 +3,6 @@
 export(EnhanceFeatures)
 export(EnhancedCluster)
 export(SpatialCluster)
-export(features)
 export(getRDS)
 export(preprocess)
 export(ClusterPlot)
