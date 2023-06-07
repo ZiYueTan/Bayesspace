@@ -178,6 +178,7 @@ make_vertices <- function(sce, fill, platform, is.enhanced) {
 #' @param platform Spatial transcriptomic platform.
 #' @param is.enhanced Used to determine spot layout.
 #'
+#' @export
 #' @return Returns a ggplot object.
 #' @importFrom ggplot2 ggplot aes_ geom_polygon scale_fill_manual coord_equal labs theme_void
 ClusterPlot <- function(sce, label = "spatial.cluster", palette = NULL, platform=NULL, is.enhanced=NULL){
@@ -213,6 +214,7 @@ ClusterPlot <- function(sce, label = "spatial.cluster", palette = NULL, platform
 #' @param low,mid,high Optional hex codes for low, mid, and high values of the
 #'   color gradient used for continuous spot values.
 #'
+#' @export
 #' @return Returns a ggplot object.
 #'
 #' @importFrom ggplot2 ggplot aes_ geom_polygon scale_fill_gradient scale_fill_gradient2 coord_equal labs theme_void
