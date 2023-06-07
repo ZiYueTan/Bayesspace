@@ -67,7 +67,8 @@ tri_spots_vertices <- function(sce, x = "sub.col", y = "sub.row", fill = "spatia
 #' @return Table of (x.pos, y.pos, spot, fill); where \code{spot} groups the
 #'   vertices outlining the spot's border
 #' @keywords  internal
-#'
+
+
 hex_spots_vertices <- function(sce, x = "col", y = "row", fill = "spatial.cluster"){
 
   cdata <- colData(sce)
