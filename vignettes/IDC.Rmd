@@ -1,0 +1,176 @@
+---
+title: "IDC"
+author: "Ziyue Tan"
+date: "2023-05-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load functions}
+for (i in list.files(pattern = ".R$")) {
+  source(i)                      
+}
+
+library(tidyverse)
+library(ggpubr)
+library(reshape2)
+
+```
+
+```{r IDC preprocess}
+IDC <- getRDS("2020_10X-IDC", "IDC1")
+IDC <- preprocess(IDC, platform = "Visium", n.PCs = 15, n.HVGs = 2000, log.normalize = FALSE)
+```
+
+
+```{r IDC cluster}
+IDC <-  SpatialCluster(IDC, q = 10, d = 15, platform = "Visium", gamma = 3, n.rep = 100, ncores = 2)
+```
+
+```{r IDC cluster plot}
+ClusterPlot(IDC) + scale_y_reverse() + scale_x_reverse()
+```
+
+```{r IDC enhanced cluster}
+
+enhanced.IDC <- EnhancedCluster(IDC, q = 10, d = 15, platform = "Visium", gamma = 3, n.rep = 50, ncores = 2, jitter_scale = 20, jitter_prior = 10)
+```
+
+```{r IDC enhanced cluster plots}
+enhanced.IDC$spatial.cluster <- dplyr::recode(enhanced.IDC$spatial.cluster, 4, 2, 5, 7, 8, 3, 9, 1, 10, 6)
+ClusterPlot(enhanced.IDC) + scale_y_reverse() + scale_x_reverse()
+```
+
+```{r IDC features}
+library(viridis)
+
+
+IDC.features <- c("ERBB2", "ESR1", "PGR", "PTPRC", "CD4",
+                  "CD8A", "CD14", "CD68", "IGHG3", "MKI67",
+                  "MUC1", "COL1A2", "ZNF703", "GRB2", "BAMBI")
+
+enhanced.IDC <- EnhanceFeatures(enhanced.IDC, IDC, model="xgboost", feature_names = IDC.features, nrounds=0)
+
+```
+
+
+
+```{r box}
+box.feature <- function(feature.name){
+  subspots <- colnames(enhanced.IDC)
+  cluster <- as.factor(enhanced.IDC$spatial.cluster)
+  
+  feature <- assay(enhanced.IDC, "logcounts")[feature.name, ]
+  
+  box.frame <-  data.frame("subspots" = subspots, "cluster" = cluster, "feature" = feature)
+  
+  p <- ggplot(box.frame, aes(x = cluster, y = feature, fill = cluster)) + geom_boxplot() + labs(title = feature.name) + theme(legend.position = "none") 
+  
+  p
+}
+```
+
+
+```{r boxplot}
+
+p1 <- box.feature("ERBB2")
+p2 <- box.feature("ESR1")
+p3 <- box.feature("PGR")
+
+g1 <- ggarrange(p1 +  rremove("xlab") + rremove("ylab"), p2 + rremove("xlab") + rremove("ylab"), p3 + rremove("ylab"), ncol = 1,  labels = NULL)  
+
+p1 <- box.feature("PTPRC")
+p2 <- box.feature("CD4")
+p3 <- box.feature("CD8A")
+g2 <- ggarrange(p1 +  rremove("xlab") + rremove("ylab"), p2 + rremove("xlab") + rremove("ylab"), p3 + rremove("ylab"), ncol = 1,  labels = NULL)  
+
+p1 <- box.feature("CD14")
+p2 <- box.feature("CD68")
+p3 <- box.feature("IGHG3")
+g3 <- ggarrange(p1 +  rremove("xlab") + rremove("ylab"), p2 + rremove("xlab") + rremove("ylab"), p3 + rremove("ylab"), ncol = 1,  labels = NULL)
+
+
+p1 <- box.feature("MUC1")
+p2 <- box.feature("MKI67")
+p3 <- box.feature("COL1A2")
+g4 <- ggarrange(p1 +  rremove("xlab") + rremove("ylab"), p2 + rremove("xlab") + rremove("ylab"), p3 + rremove("ylab"), ncol = 1,  labels = NULL)  
+
+p1 <- box.feature("ZNF703")
+p2 <- box.feature("GRB2")
+p3 <- box.feature("BAMBI")
+g5 <- ggarrange(p1 +  rremove("xlab") + rremove("ylab"), p2 + rremove("xlab") + rremove("ylab"), p3 + rremove("ylab"), ncol = 1,  labels = NULL)  
+
+g1  + g2  + coord_fixed(ratio = 1.5)
+
+ g4  + coord_fixed(ratio = 1.5)
+ g5  + coord_fixed(ratio = 1.5)
+```
+
+
+```{r IDC features plots}
+
+FeaturePlot(enhanced.IDC, "CD68") + 
+  viridis::scale_fill_viridis(option="A") + 
+  scale_y_reverse() + scale_x_reverse() + labs(title = "CD68")
+
+FeaturePlot(enhanced.IDC, "ERBB2") + 
+  viridis::scale_fill_viridis(option="A") + 
+  scale_y_reverse() + scale_x_reverse() + labs(title = "ERBB2")
+
+FeaturePlot(enhanced.IDC, "ESR1") + 
+  viridis::scale_fill_viridis(option="A") + 
+  scale_y_reverse() + scale_x_reverse() + labs(title = "ESR1")
+
+FeaturePlot(enhanced.IDC, "PGR") + 
+  viridis::scale_fill_viridis(option="A") + 
+  scale_y_reverse() + scale_x_reverse() + labs(title = "PGR")
+
+FeaturePlot(enhanced.IDC, "PTPRC") + 
+  viridis::scale_fill_viridis(option="A") + 
+  scale_y_reverse() + scale_x_reverse() + labs(title = "PTPRC")
+
+FeaturePlot(enhanced.IDC, "CD4") + 
+  viridis::scale_fill_viridis(option="A") + 
+  scale_y_reverse() + scale_x_reverse() + labs(title = "CD4")
+
+FeaturePlot(enhanced.IDC, "CD8A") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "CD8A")
+
+FeaturePlot(enhanced.IDC, "CD14") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "CD14")
+
+FeaturePlot(enhanced.IDC, "IGHG3") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "IGHG3")
+
+FeaturePlot(enhanced.IDC, "MKI67") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "MKI67")
+
+FeaturePlot(enhanced.IDC, "MUC1") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "MUC1")
+
+FeaturePlot(enhanced.IDC, "COL1A2") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "COL1A2")
+
+FeaturePlot(enhanced.IDC, "ZNF703") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title = "ZNF703")
+
+FeaturePlot(enhanced.IDC,  "GRB2") + 
+  viridis::scale_fill_viridis(option="A") +
+  scale_y_reverse() + scale_x_reverse() + labs(title =  "GRB2")
+
+FeaturePlot(enhanced.IDC, "BAMBI") + 
+  viridis::scale_fill_viridis(option="A") +
+    scale_y_reverse() + scale_x_reverse() + labs(title = "BAMBI")
+```
+
