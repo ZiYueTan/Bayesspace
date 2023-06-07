@@ -11,7 +11,7 @@
 #'
 #' @keywords internal
 #' @importFrom stats kmeans
-#' @importFrom mclust Mclust
+#' @importFrom mclust Mclust mclustBIC
 
 init.cluster <- function(Y, q, init = NULL, init.method = c("mclust", "kmeans")){
 
