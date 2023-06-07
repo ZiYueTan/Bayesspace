@@ -32,11 +32,8 @@ importFrom(ggplot2,scale_fill_gradient)
 importFrom(ggplot2,scale_fill_gradient2)
 importFrom(ggplot2,scale_fill_manual)
 importFrom(ggplot2,theme_void)
-<<<<<<< HEAD
 importFrom(mclust,Mclust)
-importFrom(mclust, mclustBIC)
-=======
->>>>>>> cd7a516ed36d7f65cfe0a0bfd32df1f8a29b46df
+importFrom(mclust,mclustBIC)
 importFrom(mvtnorm,dmvnorm)
 importFrom(mvtnorm,rmvnorm)
 importFrom(parallel,makeCluster)
